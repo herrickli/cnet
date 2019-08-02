@@ -3,7 +3,7 @@ import numpy as np
 
 def nms(rois, _scores, thresh):
     xmin, ymin, xmax, ymax = rois[:,0], rois[:,1], rois[:,2], rois[:,3]
-    scores = _scores.detach().numpy()
+    scores = _scores
     order = scores.argsort()[::-1]
 
     areas = (xmax - xmin) * (ymax - ymin)
@@ -26,7 +26,7 @@ def nms(rois, _scores, thresh):
 
         order = order[left_index + 1]
 
-    return rois[keep]
+    return keep
 
 if __name__ == '__main__':
     dets = [[0, 0, 100, 101], [5, 6, 90, 110], [17, 19, 80, 120], [10, 8, 115, 105]]

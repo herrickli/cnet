@@ -64,19 +64,19 @@ class RPNTargetCreator:
         gt_max_iou = iou[gt_argmax_iou, np.arange(gt_boxes.shape[0])]
         gt_argmax_iou = np.where(iou == gt_max_iou)[0]
 
-        label[max_iou > self.pos_iou_thresh] = 1
+        label[max_iou >= self.pos_iou_thresh] = 1
         label[gt_argmax_iou] = 1
         label[max_iou < self.neg_iou_thresh] = 0
 
         n_pos = int(self.n_sample * self.pos_ratio)
         pos_index = np.where(label == 1)[0]
         if len(pos_index) > n_pos:
-            disable_index = np.random.choice(pos_index, size=len(pos_index) - n_pos, replace=False)
+            disable_index = np.random.choice(pos_index, size=(len(pos_index) - n_pos), replace=False)
             label[disable_index] = -1
-        n_neg = self.n_sample - n_pos
+        n_neg = self.n_sample - np.sum(label == 1)
         neg_index = np.where(label == 0)[0]
         if len(neg_index) > n_neg:
-            disable_index = np.random.choice(neg_index, size=len(neg_index) - n_neg, replace=False)
+            disable_index = np.random.choice(neg_index, size=(len(neg_index) - n_neg), replace=False)
             label[disable_index] = -1
 
         return argmax_iou, label

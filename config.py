@@ -22,6 +22,12 @@ class Config:
         'train',
         'tvmonitor'
     )
+    n_class = 21
+
+
+    # predict parameters
+    pred_score_thresh = 0.05
+    pred_nms_thresh = 0.3
 
 
 cfg = Config()

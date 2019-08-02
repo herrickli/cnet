@@ -35,12 +35,16 @@ def loc2bbox(anchor, loc):
                 Ph = exp(dh) * Ah   | ==> width and height
     """
     # support batch_size = 1 for now
-    delta = loc.squeeze(0).detach().numpy()
+
+    if anchor.shape[0] == 0:
+        return np.zeros((0, 4), dtype=loc.dtype)
+
+    delta = loc
 
     width = anchor[:, 2] - anchor[:, 0]
     height = anchor[:, 3] - anchor[:, 1]
     centre_x = width / 2 + anchor[:, 0]
-    centre_y = height / 2 + anchor[:, 0]
+    centre_y = height / 2 + anchor[:, 1]
 
     dx = delta[:, 0::4]
     dy = delta[:, 1::4]
@@ -52,7 +56,7 @@ def loc2bbox(anchor, loc):
     dst_h = np.exp(dh) * height[:, None]
     dst_w = np.exp(dw) * width[:, None]
 
-    dst_box = np.zeros(shape=delta.shape)
+    dst_box = np.zeros(shape=delta.shape, dtype=delta.dtype)
     dst_box[:, 0::4] = dst_x - 0.5 * dst_w
     dst_box[:, 1::4] = dst_y - 0.5 * dst_h
     dst_box[:, 2::4] = dst_x + 0.5 * dst_w
@@ -109,7 +113,7 @@ class arrayTool:
 
     def toTensor(self, data, cuda=False):
         if isinstance(data, torch.Tensor):
-            tensor = data.detach()
+            tensor = data.detach().contiguous()
         if isinstance(data, np.ndarray):
             tensor = torch.from_numpy(data)
         if cuda:
@@ -125,7 +129,7 @@ class arrayTool:
 at = arrayTool()
 
 if __name__ == '__main__':
-    anchor = np.random.randn(3, 4)
-    gt_box = np.random.randn(2, 4)
+    anchor = np.array([[1,1, 10, 10], [4,1,8,10], [10, 10, 20,12]])
+    gt_box = np.array([[3,3,10,10]])
     iou = bbox_iou(anchor, gt_box)
     print(iou)

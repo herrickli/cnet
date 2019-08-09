@@ -26,8 +26,12 @@ class Config:
 
 
     # predict parameters
-    pred_score_thresh = 0.05
+    pred_score_thresh = 0.9
     pred_nms_thresh = 0.3
+
+    #
+    weight_decay = 0.0005
+    lr = 1e-3
 
 
 cfg = Config()

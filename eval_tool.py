@@ -25,7 +25,7 @@ def calc_precision_and_recall(pred_boxes,
     for pred_box, pred_score, pred_label, gt_box, gt_label in zip(
             pred_boxes, pred_scores, pred_labels, gt_boxes, gt_labels):
 
-        gt_difficult = np.zeros(gt_box.shape[0], dtype=bool) # false
+        gt_difficult = np.zeros(gt_box.shape[0], dtype=bool)  # false
 
         for l in np.unique(np.concatenate((pred_label, gt_label)).astype(int)):
             pred_mask_l = pred_label == l
@@ -76,7 +76,7 @@ def calc_precision_and_recall(pred_boxes,
         if next(iter_, None) is not None:
             raise ValueError('Length of input iterable should be same.')
 
-    n_fg_class = max(n_pos.keys()) + 1 # all classes, exclude background
+    n_fg_class = max(n_pos.keys()) + 1  # all classes, exclude background
     prec = [None] * n_fg_class
     rec = [None] * n_fg_class
 
@@ -96,8 +96,8 @@ def calc_precision_and_recall(pred_boxes,
 
     return prec, rec
 
-def calc_average_precision(prec, rec):
 
+def calc_average_precision(prec, rec):
     n_fg_class = len(prec)
     ap = np.empty(n_fg_class)
     for l in range(n_fg_class):
@@ -114,13 +114,12 @@ def calc_average_precision(prec, rec):
         # 对mrec向后移动一位后比较，找出变化的位置
         i = np.where(mrec[1:] != mrec[:-1])[0]
 
-        ap = np.sum((mrec[i + 1] - mrec[i]) * mprec[i + 1])
+        ap[l] = np.sum((mrec[i + 1] - mrec[i]) * mprec[i + 1])
 
     return ap
 
 
 def calc_map(pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, iou_thresh=0.5):
-
     prec, rec = calc_precision_and_recall(pred_boxes,
                                           pred_labels,
                                           pred_scores,
@@ -131,3 +130,7 @@ def calc_map(pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, iou_thre
     ap = calc_average_precision(prec, rec)
 
     return {'ap': ap, 'mAP': np.nanmean(ap)}
+
+
+if __name__ == '__main__':
+    pass

@@ -6,6 +6,7 @@ from config import cfg
 from dataset import custom_dataset
 from torch.utils.data import DataLoader
 
+from eval_tool import calc_map
 from nms import nms
 from rcnn import RCNN
 from rcnn_target_creator import RCNNTargetCreator
@@ -15,6 +16,8 @@ from tools import loc2bbox, at
 
 
 def test():
+    cuda = True
+
     test_dataset = custom_dataset(split='test')
     test_data_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -22,69 +25,93 @@ def test():
     resnet = resnet101(pretrained=True).eval()
     rpn = RPN().eval()
     rcnn = RCNN().eval()
-    check_point = torch.load('data/cnet.model.state.9.2499.pkl')
+
+    if cuda:
+        #resnet = resnet.cuda()
+        rpn = rpn.cuda()
+        rcnn = rcnn.cuda()
+
+    check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rpn/rpn_19.2499')
     #resnet.load_state_dict(check_point['resnet'])
     rpn.load_state_dict(check_point['rpn'])
-    rcnn.load_state_dict(check_point['rcnn'])
+    resnet.load_state_dict(check_point['resnet'])
+    rcnn_check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rcnn/rcnn_epoch_19.params')
+    rcnn.load_state_dict(rcnn_check_point['rcnn'])
 
     pred_bboxes = list()
     pred_labels = list()
     pred_scores = list()
 
-    for img_batch, bndboxes_batch, labels_batch in test_data_loader:
-        img, bndboxes, labels = img_batch, bndboxes_batch[0], labels_batch[0]
-        feature = resnet(img.float())
-        rois, anchors, rpn_loc, rpn_score = rpn(feature, feature_stride=32)
+    gt_boxes = list()
+    gt_labels = list()
+    with torch.no_grad():
+        for img_batch, bndboxes_batch, labels_batch in test_data_loader:
+            img, bndboxes, labels = img_batch, bndboxes_batch[0], labels_batch[0]
+            #if cuda:
+                #img, bndboxes, labels = img.cuda(), bndboxes.cuda(), labels.cuda()
+            feature = resnet(img.float())
+            if cuda:
+                feature = feature.cuda()
+            rois, anchors, rpn_loc, rpn_score = rpn(feature, feature_stride=16)
 
-        roi_cls_loc, roi_score = rcnn(rois, feature)
+            roi_cls_loc, roi_score = rcnn(rois, feature)
 
-        mean = torch.Tensor((0., 0., 0., 0.)).repeat(cfg.n_class)[None]
-        std  = torch.Tensor((0.1, 0.1, 0.2, 0.2)).repeat(cfg.n_class)[None]
-        roi_cls_loc = (roi_cls_loc * std + mean)
-
-
-        # expand dim as loc
-        rois = rois.reshape(-1, 1, 4)[:, [int(x) for x in np.zeros(cfg.n_class).tolist()], :]
-
-        roi_cls_loc = at.toTensor(roi_cls_loc)
-        roi_cls_loc = roi_cls_loc.view(roi_cls_loc.shape[0], -1, 4)
+            mean = torch.Tensor((0., 0., 0., 0.)).repeat(cfg.n_class)[None].cuda()
+            std  = torch.Tensor((0.1, 0.1, 0.2, 0.2)).repeat(cfg.n_class)[None].cuda()
+            roi_cls_loc = (roi_cls_loc * std + mean)
 
 
-        pred_box = loc2bbox(rois.reshape(-1, 4), roi_cls_loc.view(-1, 4).cpu().detach().numpy())
-        # clip box
-        pred_box[:, 0::2] = np.clip(pred_box[:, 0::2], 0, img.shape[2])
-        pred_box[:, 1::2] = np.clip(pred_box[:, 1::2], 0, img.shape[3])
+            # expand dim as loc
+            rois = rois.reshape(-1, 1, 4)[:, [int(x) for x in np.zeros(cfg.n_class).tolist()], :]
 
-        look_score1 = np.array(roi_score.detach())
-        pred_score = F.softmax(roi_score, dim=1)
+            roi_cls_loc = at.toTensor(roi_cls_loc)
+            roi_cls_loc = roi_cls_loc.view(roi_cls_loc.shape[0], -1, 4)
 
-        look_score1 = np.array(pred_score.detach())
-        pred_score = pred_score.detach()
 
-        bbox = list()
-        label = list()
-        score = list()
+            pred_box = loc2bbox(rois.reshape(-1, 4), roi_cls_loc.view(-1, 4).cpu().detach().numpy())
+            # clip box
+            pred_box[:, 0::2] = np.clip(pred_box[:, 0::2], 0, img.shape[2])
+            pred_box[:, 1::2] = np.clip(pred_box[:, 1::2], 0, img.shape[3])
 
-        for class_index in range(1, cfg.n_class):
-            each_bbox = pred_box.reshape((-1, cfg.n_class, 4))[:, class_index, :]
-            each_score = pred_score[:, class_index]
-            mask = each_score > cfg.pred_score_thresh
-            each_bbox = each_bbox[mask]
-            each_score = each_score[mask]
-            keep = nms(each_bbox, each_score.numpy(), cfg.pred_nms_thresh)
-            bbox.append(each_bbox[keep])
-            score.append(each_score[keep])
-            label.append(class_index * np.ones((len(keep),)))
-        bbox = np.concatenate(bbox, axis=0).astype(np.float32)
-        score = np.concatenate(score, axis=0).astype(np.float32)
-        label = np.concatenate(label, axis=0).astype(np.int32)
+            look_score1 = np.array(roi_score.cpu().detach())
+            pred_score = F.softmax(roi_score, dim=1)
 
-        print('gt_info:', bndboxes, labels)
-        print('pred_info', bbox, score, label)
+            look_score1 = np.array(pred_score.cpu().detach())
+            pred_score = pred_score.cpu().detach().numpy()
 
-        pred_bboxes.append(bbox)
-        pred_scores.append(score)
-        pred_labels.append(labels)
+            gt_box = list(bndboxes_batch.cpu().numpy())
+            gt_label = list(labels_batch.cpu().numpy())
+
+            bbox = list()
+            label = list()
+            score = list()
+
+            for class_index in range(1, cfg.n_class):
+                each_bbox = pred_box.reshape((-1, cfg.n_class, 4))[:, class_index, :]
+                each_score = pred_score[:, class_index]
+                mask = each_score > cfg.pred_score_thresh
+                each_bbox = each_bbox[mask]
+                each_score = each_score[mask]
+                keep = nms(each_bbox, each_score, cfg.pred_nms_thresh)
+                bbox.append(each_bbox[keep])
+                score.append(each_score[keep])
+                label.append(class_index * np.ones((len(keep),)))
+            bbox = np.concatenate(bbox, axis=0).astype(np.float32)
+            score = np.concatenate(score, axis=0).astype(np.float32)
+            label = np.concatenate(label, axis=0).astype(np.int32)
+            print('gt_info:', gt_box, gt_label)
+            print('predict info:', bbox, score, label)
+
+            pred_bboxes += [bbox]
+            pred_scores += [score]
+            pred_labels += [label]
+            gt_boxes += gt_box
+            gt_labels += gt_label
+
+        result = calc_map(pred_bboxes, pred_labels, pred_scores, gt_boxes, gt_labels)
+        print(result)
+
+
 
 if __name__ == '__main__':
     test()

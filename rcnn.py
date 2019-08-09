@@ -10,7 +10,7 @@ from roi_pooling import RoIPooling2D
 
 class RCNN(nn.Module):
     def __init__(self,
-                 n_class = 21,#include background
+                 n_class=21,#include background
                  roi_pooling_size=7):
         super(RCNN, self).__init__()
         self.n_class = n_class

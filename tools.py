@@ -109,6 +109,15 @@ def clip_bbox(boxes, height, width):
     boxes[:, 3::4] = boxes[:, 3::4].clip(0, height - 1)
     return boxes
 
+
+def normal_init(model, mean, stddev, truncated=False):
+    if truncated:
+        model.weight.data.normal_().fomd_(2).mul_(stddev).add_(mean)
+    else:
+        model.weight.data.normal_(mean, stddev)
+        model.bias.data.zero_()
+
+
 class arrayTool:
 
     def toTensor(self, data, cuda=False):
@@ -126,10 +135,11 @@ class arrayTool:
         if isinstance(data, torch.Tensor):
             return data.detach().numpy()
 
+
 at = arrayTool()
 
 if __name__ == '__main__':
-    anchor = np.array([[1,1, 10, 10], [4,1,8,10], [10, 10, 20,12]])
-    gt_box = np.array([[3,3,10,10]])
+    anchor = np.array([[1, 1, 10, 10], [4, 1, 8, 10], [10, 10, 20, 12]])
+    gt_box = np.array([[3, 3, 10, 10]])
     iou = bbox_iou(anchor, gt_box)
     print(iou)

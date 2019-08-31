@@ -41,10 +41,10 @@ def loc2bbox(anchor, loc):
 
     delta = loc
 
-    width = anchor[:, 2] - anchor[:, 0]
-    height = anchor[:, 3] - anchor[:, 1]
-    centre_x = width / 2 + anchor[:, 0]
-    centre_y = height / 2 + anchor[:, 1]
+    width = anchor[:, 2] - anchor[:, 0] + 1.0
+    height = anchor[:, 3] - anchor[:, 1] + 1.0
+    centre_x = width * 0.5 + anchor[:, 0]
+    centre_y = height * 0.5 + anchor[:, 1]
 
     dx = delta[:, 0::4]
     dy = delta[:, 1::4]
@@ -77,8 +77,8 @@ def bbox2loc(src_box, dst_box):
              dw = log(Gw/Sw)
              dh = log(Gh/Sh)
     """
-    width = src_box[:, 2] - src_box[:, 0]
-    height = src_box[:, 3] - src_box[:, 1]
+    width = src_box[:, 2] - src_box[:, 0] + 1.0
+    height = src_box[:, 3] - src_box[:, 1] + 1.0
     ctr_x = src_box[:, 0] + 0.5 * width
     ctr_y = src_box[:, 1] + 0.5 * height
 
@@ -87,8 +87,8 @@ def bbox2loc(src_box, dst_box):
     width = np.maximum(width, eps)
     height = np.maximum(height, eps)
 
-    dst_width = dst_box[:, 2] - dst_box[:, 0]
-    dst_height = dst_box[:, 3] - dst_box[:, 1]
+    dst_width = dst_box[:, 2] - dst_box[:, 0] + 1.0
+    dst_height = dst_box[:, 3] - dst_box[:, 1] + 1.0
     dst_ctr_x = dst_box[:, 0] + 0.5 * dst_width
     dst_ctr_y = dst_box[:, 1] + 0.5 * dst_height
 
@@ -103,10 +103,14 @@ def bbox2loc(src_box, dst_box):
 
 
 def clip_bbox(boxes, height, width):
-    boxes[:, 0::4] = boxes[:, 0::4].clip(0, width - 1)
-    boxes[:, 1::4] = boxes[:, 1::4].clip(0, height - 1)
-    boxes[:, 2::4] = boxes[:, 2::4].clip(0, width - 1)
-    boxes[:, 3::4] = boxes[:, 3::4].clip(0, height - 1)
+    # x1 >= 0
+    boxes[:, 0::4] = np.maximum(np.minimum(boxes[:, 0::4], width - 1), 0)
+    # y1 >= 0
+    boxes[:, 1::4] = np.maximum(np.minimum(boxes[:, 1::4], height - 1), 0)
+    # x2 < im_shape[1]
+    boxes[:, 2::4] = np.maximum(np.minimum(boxes[:, 2::4], width - 1), 0)
+    # y2 < im_shape[0]
+    boxes[:, 3::4] = np.maximum(np.minimum(boxes[:, 3::4], height - 1), 0)
     return boxes
 
 

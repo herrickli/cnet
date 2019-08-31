@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 import torch.utils.model_zoo as model_zoo
 
 
@@ -137,9 +138,23 @@ def resnet101(pretrained=True, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
+
+    def set_bn_fix(m):
+      classname = m.__class__.__name__
+      if classname.find('BatchNorm') != -1:
+        for p in m.parameters(): p.requires_grad=False
+
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet101']))
+    ck2 = torch.load("/home/licheng/weights/resnet101_caffe.pth")
+    model.load_state_dict({k: v for k, v in ck2.items() if k in model.state_dict()})
+
+    model.apply(set_bn_fix)
+
+    for m in [model.conv1, model.bn1, model.layer1, model.layer2, model.layer3]:
+        for p in m.parameters():
+            p.requires_grad = False
+
+
     return model
 
 if __name__ == '__main__':

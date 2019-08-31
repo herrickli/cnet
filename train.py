@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 from rpn import RPN
 from rpn_target_creator import RPNTargetCreator
-from tools import at, normal_init
+from tools import at, normal_init, loc2bbox
 from visdom_plot import draw_loss_cruve
 
 
@@ -21,11 +21,7 @@ def train():
     cuda = True
     resume = True
 
-    resnet = resnet101(pretrained=True)
-    # Fix no grad
-    for layer in [resnet.conv1, resnet.bn1,resnet.layer1]:
-        for p in layer.parameters():
-            p.requires_grad = False
+    resnet = resnet101()
     rpn = RPN()
     rpn_targegt_creator = RPNTargetCreator()
     rcnn_target_creator = RCNNTargetCreator()
@@ -34,12 +30,6 @@ def train():
         resnet = resnet.cuda()
         rpn = rpn.cuda()
         rcnn = rcnn.cuda()
-
-    normal_init(rpn.conv, 0, 0.01)
-    normal_init(rpn.loc_layer, 0, 0.01)
-    normal_init(rpn.score_layer, 0, 0.01)
-    normal_init(rcnn.cls_score, 0, 0.01)
-    normal_init(rcnn.cls_loc, 0, 0.001)
 
     dataset = custom_dataset()
     data_loader = DataLoader(dataset, batch_size=1 , shuffle=True)
@@ -60,23 +50,17 @@ def train():
                 else:
                     params += [{'params': [value], 'lr': lr, 'weight_decay': cfg.weight_decay}]
 
-        optimizer = optim.SGD(params, momentum=0.9)
-    """
-    optimizer = optim.SGD([
-        {'params': rpn.parameters()},
-        {'params': resnet.parameters()},
-        {'params': rcnn.parameters()}
-    ], lr=0.01, momentum=0.9)
-    """
+    optimizer = optim.SGD(params, momentum=0.9)
+
     if resume:
-        load_path = 'data/cnet.model.state.19.2499.pkl'
-        check_point = torch.load(load_path)
-        resnet.load_state_dict(check_point['resnet'])
-        rpn.load_state_dict(check_point['rpn'])
-        rcnn.load_state_dict(check_point['rcnn'])
-        #optimizer.load_state_dict(check_point['optimizer'])
-        start_epoch = check_point['start_epoch']
-        start_iter = check_point['start_iter']
+        rpn_load_path = '/home/licheng/home/licheng/projects/cnet/data/rpn/rpn_epoch_19.params'
+        rpn_check_point = torch.load(rpn_load_path)
+        #resnet.load_state_dict(rpn_check_point['resnet'])
+        rpn.load_state_dict(rpn_check_point['rpn'])
+
+        rcnn_load_path = '/home/licheng/home/licheng/projects/cnet/data/rcnn/rcnn_epoch_19.params'
+        rcnn_check_point = torch.load(rcnn_load_path)
+        rcnn.load_state_dict(rcnn_check_point['rcnn'])
 
     loss_name = ['rpn_cls_loss', 'rpn_loc_loss', 'rcnn_cls_loss', 'rcnn_loc_loss', 'total_loss']
     vis_r_l_loss, vis_r_c_loss, vis_o_l_loss, vis_o_c_loss, vis_to_loss, vis_to_loss = 0, 0, 0, 0, 0, 0
@@ -176,29 +160,38 @@ def train():
             model_save_path = 'data/cnet.model.state.{}.0.pkl'.format(epoch)
             print('module saved in {}'.format(model_save_path))
             torch.save(model_state, model_save_path)
+    model_state = {'resnet': resnet.state_dict(),
+                   'rpn': rpn.state_dict(),
+                   'rcnn': rcnn.state_dict()}
+    model_save_path = 'data/final.pkl'
+    torch.save(model_state, model_save_path)
 
 def train_rpn():
-    resnet = resnet101(pretrained=True).cuda()
-    # Fix no grad
-    for layer in [resnet.conv1, resnet.bn1, resnet.layer1]:
-        for p in layer.parameters():
-            p.requires_grad = False
+    """
+    I think the accuracy of rpn is good enough
+    :return:
+    """
+
+    resnet = resnet101().cuda()
+    for p in resnet.parameters():
+        p.requires_grad = False
 
     rpn = RPN().cuda()
 
-    load_path = 'data/rpn/rpn_19.2499'
-    check_point = torch.load(load_path)
 
-    rpn.load_state_dict(check_point['rpn'])
-    resnet.load_state_dict(check_point['resnet'])
+    #load_path = 'data/rpn/rpn_19.2499'
+    #check_point = torch.load(load_path)
+
+    #rpn.load_state_dict(check_point['rpn'])
+    #resnet.load_state_dict(check_point['resnet'])
 
     rpn_targegt_creator = RPNTargetCreator()
     dataset = custom_dataset()
-    dataloader = DataLoader(dataset)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
     dataiter = iter(dataloader)
     total_epoch = 20
 
-    lr = 0.001
+    lr = 0.01
     params = []
     for net in [resnet, rpn]:
         for key, value in dict(net.named_parameters()).items():
@@ -208,6 +201,10 @@ def train_rpn():
                 else:
                     params += [{'params': [value], 'lr': lr, 'weight_decay': cfg.weight_decay}]
     optimizer = optim.SGD(params, momentum=0.9)
+
+    loss_name = ['TRAIN RPN rpn_cls_loss', 'TRAIN RPN rpn_loc_loss']
+    vis_rpn_loc_loss, vis_rpn_cls_loss= 0, 0
+
     for epoch in range(total_epoch):
         for i in range(0, len(dataset)):
             try:
@@ -221,7 +218,6 @@ def train_rpn():
             batch_size, channels, height, width = img.shape
             feature = resnet(img)
             rois, anchors, rpn_loc, rpn_score = rpn(feature, feature_stride=16)
-
             gt_rpn_loc, gt_rpn_label = rpn_targegt_creator(anchors, bndboxes.cpu().detach().numpy(), (height, width))
 
             gt_rpn_label = at.toTensor(gt_rpn_label).long().cuda()
@@ -239,15 +235,27 @@ def train_rpn():
             rpn_loss.backward()
 
             optimizer.step()
-            if (i+1) % 100 == 0:
-                save_path = 'data/rpn/rpn_{}.{}'.format(epoch, i)
-                model_state = {'resnet': resnet.state_dict(),
-                               'rpn': rpn.state_dict()}
-                torch.save(model_state, save_path)
+
+            vis_rpn_cls_loss += rpn_cls_loss.item()
+            vis_rpn_loc_loss += rpn_loc_loss.item()
+
+            if (i + 1) % 40 == 0:
+                vis_loss_value = [vis_rpn_cls_loss, vis_rpn_loc_loss]
+                draw_loss_cruve(loss_name, 2501 * (epoch - 1) + i, vis_loss_value)
+                vis_rpn_loc_loss, vis_rpn_cls_loss= 0, 0
+
+        if (epoch + 1) % 10 == 0:
+            for parameter_group in optimizer.param_groups:
+                parameter_group['lr'] *= 0.1
+
+        svae_path = 'data/rpn/rpn_epoch_{}.params'.format(epoch)
+        state_dict = {'rpn': rpn.state_dict()}
+        torch.save(state_dict, svae_path)
 
 
 def train_rcnn():
-    resnet = resnet101(pretrained=True)
+    """ I think the coord accuracy of rcnn is good enough"""
+    resnet = resnet101()
     rpn = RPN()
     rcnn = RCNN()
 
@@ -255,19 +263,20 @@ def train_rcnn():
     rpn.cuda()
     rcnn.cuda()
 
-    check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rpn/rpn_19.2499')
+    check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rpn/rpn_epoch_19.params')
     rpn.load_state_dict(check_point['rpn'])
-    resnet.load_state_dict(check_point['resnet'])
-    rcnn_check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rcnn/rcnn_epoch_8.params')
+    rcnn_check_point = torch.load("/home/licheng/home/licheng/projects/cnet/data/rcnn/rcnn_epoch_16.params")
     rcnn.load_state_dict(rcnn_check_point['rcnn'])
 
+    #rcnn_check_point = torch.load('/home/licheng/home/licheng/projects/cnet/data/rcnn/rcnn_epoch_5.params')
+    #rcnn.load_state_dict(rcnn_check_point['rcnn'])
+
     # fix prarams
-    for model in [resnet, rpn]:
-        for param in model.parameters():
-            param.requires_grad = False
+
+
     params = []
-    lr = 0.001
-    for net in [resnet, rpn, rcnn]:
+    lr = 0.01
+    for net in [rcnn]:
         for key, value in dict(net.named_parameters()).items():
             if value.requires_grad:
                 if 'bias' in key:
@@ -280,9 +289,14 @@ def train_rcnn():
     rcnn_target_creator = RCNNTargetCreator()
 
     dataset = custom_dataset()
-    dataloader = DataLoader(dataset, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
     dataiter = iter(dataloader)
     total_epoch = 20
+
+    loss_name = ['TRAIN RCNN rcnn_cls_loss', 'TRAIN RCNN rcnn_loc_loss']
+    vis_o_l_loss, vis_o_c_loss= 0, 0
+
+
     for epoch in range(total_epoch):
         for i in range(len(dataset)):
             try:
@@ -295,12 +309,30 @@ def train_rcnn():
             feature = resnet(img)
             rois, _, _, _ = rpn(feature, feature_stride=16)
 
+            #print('gt boxes:', bndboxes)
             sample_roi, gt_roi_label, gt_roi_loc = rcnn_target_creator(rois, bndboxes.cpu().numpy(), labels)
+            #print('pred box', len(sample_roi), sample_roi)
             roi_cls_loc, roi_score = rcnn(sample_roi, feature)
+
+            # apple roi_cls_loc to sample_rois has a good result
+            mean = torch.Tensor((0., 0., 0., 0.)).repeat(cfg.n_class)[None].cuda()
+            std  = torch.Tensor((0.1, 0.1, 0.2, 0.2)).repeat(cfg.n_class)[None].cuda()
+            loc = (roi_cls_loc * std + mean)
+
+            look_score1 = at.toNumpy(roi_score.detach().cpu())
+            look_score2 = at.toNumpy(F.softmax(roi_score, dim=1).detach().cpu())
 
             num_rois = roi_cls_loc.shape[0]
             roi_cls_loc = roi_cls_loc.view(num_rois, -1, 4)
             roi_loc = roi_cls_loc[torch.arange(0, num_rois).long(), at.toTensor(gt_roi_label).long()]
+
+            keep = gt_roi_label > 0
+            keep = at.toNumpy(keep.detach().cpu())
+
+            loc = loc.view(num_rois, -1, 4)
+            loc = loc[torch.arange(0, num_rois).long(), at.toTensor(gt_roi_label).long()]
+
+            pred_boxes = loc2bbox(sample_roi, at.toNumpy(loc.detach().cpu()))[keep>0, :]
 
             gt_roi_loc = at.toTensor(gt_roi_loc).float().cuda()
             gt_roi_label = at.toTensor(gt_roi_label).long().cuda()
@@ -316,9 +348,19 @@ def train_rcnn():
             rcnn_loss.backward()
 
             rcnn_optimizer.step()
+
+            vis_o_c_loss += roi_cls_loss.item()
+            vis_o_l_loss += roi_loc_loss.item()
+
+            if (i + 1) % 40 == 0:
+                vis_loss_value = [vis_o_c_loss, vis_o_l_loss]
+                draw_loss_cruve(loss_name, 2501 * (epoch - 1) + i, vis_loss_value)
+                vis_o_l_loss, vis_o_c_loss = 0, 0
+
         if (epoch + 1) % 10 == 0:
             for parameter_group in rcnn_optimizer.param_groups:
                 parameter_group['lr'] *= 0.1
+
 
         svae_path = 'data/rcnn/rcnn_epoch_{}.params'.format(epoch)
         state_dict = {'rcnn': rcnn.state_dict()}
@@ -326,6 +368,6 @@ def train_rcnn():
 
 
 if __name__ == '__main__':
-    train_rcnn()
     #train_rpn()
-    #train()
+    #train_rcnn()
+    train()

@@ -44,6 +44,10 @@ class RPN(nn.Module):
         self.score_layer = nn.Conv2d(in_channels=512, out_channels=self.num_anchor*2, kernel_size=1, stride=1, padding=0)
         self.loc_layer = nn.Conv2d(in_channels=512, out_channels=self.num_anchor*4, kernel_size=1, stride=1, padding=0)
 
+        normal_init(self.conv, 0, 0.01)
+        normal_init(self.score_layer, 0, 0.01)
+        normal_init(self.loc_layer, 0, 0.01)
+
         self.min_size = 16
 
     def forward(self, feature_map, feature_stride):
@@ -87,6 +91,18 @@ class RPN(nn.Module):
         rois = rois[keep]
 
         return rois, anchors, rpn_loc, rpn_score
+
+
+def normal_init(m, mean, stddev, truncated=False):
+    """
+    weight initalizer: truncated normal and random normal.
+    """
+    # x is a parameter
+    if truncated:
+        m.weight.data.normal_().fmod_(2).mul_(stddev).add_(mean)  # not a perfect approximation
+    else:
+        m.weight.data.normal_(mean, stddev)
+        m.bias.data.zero_()
 
 
 

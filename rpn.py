@@ -5,6 +5,7 @@ import numpy as np
 
 from nms import nms
 from tools import bbox_iou, loc2bbox, clip_bbox
+from mmcv.cnn import xavier_init
 
 
 def generate_anchor_in_cell(anchor_scale=[8, 16, 32], anchor_ratio=[0.5, 1., 2.], feature_stride=16):
@@ -43,6 +44,13 @@ class RPN(nn.Module):
         self.conv = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3, stride=1, padding=1) # the size or feature_map didn't change
         self.score_layer = nn.Conv2d(in_channels=512, out_channels=self.num_anchor*2, kernel_size=1, stride=1, padding=0)
         self.loc_layer = nn.Conv2d(in_channels=512, out_channels=self.num_anchor*4, kernel_size=1, stride=1, padding=0)
+
+        #normal_init(self.conv, 0, 0.01)
+        #normal_init(self.score_layer, 0, 0.01)
+        #normal_init(self.loc_layer, 0, 0.01)
+        xavier_init(self.conv)
+        xavier_init(self.score_layer)
+        xavier_init(self.loc_layer)
 
         self.min_size = 16
 
@@ -87,6 +95,18 @@ class RPN(nn.Module):
         rois = rois[keep]
 
         return rois, anchors, rpn_loc, rpn_score
+
+
+def normal_init(m, mean, stddev, truncated=False):
+    """
+    weight initalizer: truncated normal and random normal.
+    """
+    # x is a parameter
+    if truncated:
+        m.weight.data.normal_().fmod_(2).mul_(stddev).add_(mean)  # not a perfect approximation
+    else:
+        m.weight.data.normal_(mean, stddev)
+        m.bias.data.zero_()
 
 
 

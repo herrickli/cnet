@@ -54,6 +54,7 @@ class custom_dataset(Dataset):
         labels = np.stack(labels).astype(np.int32)
 
         _ori_channel, ori_h, ori_w = img.shape
+
         scale1 = self.min_size / min(ori_h, ori_w)
         scale2 = self.max_size / max(ori_h, ori_w)
         scale = min(scale1, scale2)
@@ -62,9 +63,9 @@ class custom_dataset(Dataset):
         normalize = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         img = normalize(torch.from_numpy(img).float())
         img = img.numpy()
-
         bbox = bndboxes.copy()
         bbox = bbox * scale
+
 
         return img, bbox, labels
 
@@ -137,19 +138,17 @@ class custom_dataset(Dataset):
 
 if __name__ == '__main__':
 
-    dataset = custom_dataset(data_root='/home/cheng/data/custom/')
+    dataset = custom_dataset()
     print(len(dataset))
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
-
     data_iter = iter(data_loader)
-    """
+
     for img, bndboxes, labels in data_loader:
         print(img.shape)
         print(bndboxes)
         print(labels)
-    
-    print(next(data_iter))
 
+    """
     with open('data/gt_info.pkl', 'rb') as f:
         data = pickle.load(f)
         data2 = pickle.load(f)
@@ -157,4 +156,7 @@ if __name__ == '__main__':
     pprint(data)
     print(data2)
    # print(np.stack(dataset[2][0]))
+
+    data_iter = iter(data_loader)
+
     """

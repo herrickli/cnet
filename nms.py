@@ -30,7 +30,9 @@ def nms(rois, _scores, thresh):
 
 if __name__ == '__main__':
     dets = [[0, 0, 100, 101], [5, 6, 90, 110], [17, 19, 80, 120], [10, 8, 115, 105]]
-    scores = [0.9, 0.7, 1.0, 0.5]
-    roi = nms(dets, scores, 0.5)
-    print(roi)
+    dets = np.array(dets)
+    scores = np.array([0.9, 0.1, 1.0, 0.5])
+    keep = nms(dets, scores, 0.5)
+
+    print(dets[keep])
 
